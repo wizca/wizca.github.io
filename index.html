@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Midjourney Dynamic Vortex</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #4466ff;
+            font-family: 'Courier New', Courier, monospace;
+            /* We set font size here, but we also need it in JS for math */
+            font-size: 14px; 
+            line-height: 14px;
+            overflow: hidden;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        
+        #ascii-container {
+            white-space: pre;
+            text-align: center;
+            text-shadow: 0 0 5px rgba(60, 100, 255, 0.4); 
+        }
+
+        .logo {
+            color: #ffffff;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 
+                         0 0 20px rgba(255, 255, 255, 0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ascii-container"></div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const FONT_WIDTH = 8.4;  // Approx width of 14px Courier New
+        const FONT_HEIGHT = 14;  // Matches CSS line-height
+        
+        // These are now variables (let) instead of constants
+        let ROWS, COLS;
+        let logoY, logoX;
+        let textRowElements = [];
+        let sourceTexture = [];
+        
+        const PROMPTS = [
+            "/imagine prompt: a futuristic city with neon lights --ar 16:9 --v 5",
+            "/imagine prompt: portrait of a cybergirl, cinematic lighting, 8k",
+            "/imagine prompt: isometric view of a japanese temple, digital art",
+            "/imagine prompt: swirling liquid data in a dark void --s 750",
+            "/imagine prompt: a cat wearing space armor, hyperrealistic",
+            "/imagine prompt: abstract geometric shapes floating in space",
+            "/imagine prompt: ancient library with floating books, ethereal dust",
+            "/imagine prompt: macro shot of a mechanical eye, blue lens flare",
+            "/imagine prompt: landscape of mars with terraforming domes",
+            "/imagine prompt: cyberpunk street food vendor, rain reflection"
+        ];
+
+        const LOGO_TEXT = [
+            "                        ",
+            "       VALENTINE        ",
+            "                        "
+        ];
+
+        // --- MATH HELPERS ---
+        const interpolate = (start, end, progress) => start * (1 - progress) + end * progress;
+        const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+        const F = Math.sqrt;
+        const q = Math.sin;
+        const D = Math.cos;
+        const W = Math.max;
+        const H = Math.round;
+
+        // State Variables
+        let startTime = null; 
+        let lastFrameTime = 0; 
+        const container = document.getElementById('ascii-container');
+
+        // --- RESIZE & INIT FUNCTION ---
+        function init() {
+            // 1. Calculate Rows/Cols based on screen size
+            COLS = Math.floor(window.innerWidth / FONT_WIDTH);
+            ROWS = Math.floor(window.innerHeight / FONT_HEIGHT);
+
+            // 2. Recalculate Logo Position
+            logoY = Math.floor(ROWS / 2) - Math.floor(LOGO_TEXT.length / 2);
+            logoX = Math.floor(COLS / 2) - Math.floor(LOGO_TEXT[0].length / 2);
+
+            // 3. Reset DOM
+            container.innerHTML = '';
+            textRowElements = [];
+            for (let i = 0; i < ROWS; i++) {
+                const div = document.createElement('div');
+                container.appendChild(div);
+                textRowElements.push(div);
+            }
+
+            // 4. Regenerate Source Texture (Left Aligned)
+            sourceTexture = [];
+            // We need 2x height for the vertical scrolling loop
+            for (let y = 0; y < ROWS * 2; y++) { 
+                const prompt = PROMPTS[y % PROMPTS.length];
+                let row = "  " + prompt;
+                
+                // Pad with spaces
+                while(row.length < COLS * 2) {
+                    row += " ";
+                }
+                sourceTexture.push(row);
+            }
+        }
+
+        // --- EVENT LISTENERS ---
+        // Run init on startup
+        init();
+        
+        // Run init whenever the window changes size
+        window.addEventListener('resize', () => {
+            init();
+        });
+
+        // --- RENDER LOOP ---
+        function render(timestamp) {
+            requestAnimationFrame(render);
+
+            if (!startTime) startTime = timestamp * 0.001;
+            if (timestamp - lastFrameTime < 40) return; 
+            lastFrameTime = timestamp;
+
+            const a = (timestamp * 0.001) - startTime; 
+            
+            // Morph Timing
+            const tVal = clamp(a * 0.15 - 0.5, 0, 1); 
+            const morphFactor = tVal < .5 
+                ? (1 - F(1 - Math.pow(2 * tVal, 2))) / 2 
+                : (F(1 - Math.pow(-2 * tVal + 2, 2)) + 1) / 2;
+
+            for (let n = 0; n < ROWS; n++) {
+                let rowHTML = ""; 
+                const s = 1 - 2 * n / ROWS; 
+
+                for (let c = 0; c < COLS; c++) {
+                    const o = 2 * c / COLS - 1;
+                    
+                    // Vortex Math
+                    const d = F(o * o + s * s);
+                    const l = 0.2 * a / W(0.1, d); 
+                    
+                    const sinL = q(l);
+                    const cosL = D(l);
+                    
+                    const u = o * sinL - s * cosL; 
+                    const m = H((o * cosL + s * sinL + 1) / 2 * COLS); 
+                    const h = H((u + 1) / 2 * ROWS);            
+                    
+                    // Note: We use ROWS * 2 for the texture wrap height
+                    const texY = (h + Math.floor(a * 2)) % (ROWS * 2);
+                    
+                    let char = (m < 0 || m >= COLS * 2 || texY < 0) 
+                               ? " " 
+                               : sourceTexture[texY]?.[m] || " ";
+
+                    // --- COLOR & LOGO LOGIC ---
+                    let isLogoChar = false;
+
+                    if (n >= logoY && n < logoY + LOGO_TEXT.length && 
+                        c >= logoX && c < logoX + LOGO_TEXT[0].length) {
+                        
+                        const logoChar = LOGO_TEXT[n - logoY][c - logoX] || " ";
+                        
+                        if (logoChar !== " ") {
+                            isLogoChar = true;
+                            const codeBg = char.charCodeAt(0);
+                            const codeLogo = logoChar.charCodeAt(0);
+                            
+                            if (codeBg > 32) {
+                                const morphedCode = H(interpolate(codeBg, codeLogo, morphFactor));
+                                char = String.fromCharCode(morphedCode);
+                            } else {
+                                char = morphFactor > 0.5 ? logoChar : " ";
+                            }
+                        }
+                    }
+
+                    if (isLogoChar) {
+                        rowHTML += `<span class="logo">${char}</span>`;
+                    } else {
+                        rowHTML += char;
+                    }
+                }
+                textRowElements[n].innerHTML = rowHTML;
+            }
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
